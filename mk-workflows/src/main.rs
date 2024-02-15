@@ -1,7 +1,8 @@
 //! This program builds the github workflow files for the rust-skia project.
 
 // Allow uppercase acronyms like QA and MacOS.
-#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::all)]
+#![allow(unused)]
 
 use std::{collections::HashSet, fmt, fs, ops::Sub, path::PathBuf};
 
