@@ -10,11 +10,8 @@ use target::Target;
 mod config;
 mod target;
 
-const QA_WORKFLOW: &str = include_str!("templates/qa-workflow.yaml");
 const RELEASE_WORKFLOW: &str = include_str!("templates/release-workflow.yaml");
-const LINUX_JOB: &str = include_str!("templates/linux-job.yaml");
 const WINDOWS_JOB: &str = include_str!("templates/windows-job.yaml");
-const MACOS_JOB: &str = include_str!("templates/macos-job.yaml");
 const TARGET_TEMPLATE: &str = include_str!("templates/target.yaml");
 
 fn main() {
@@ -35,14 +32,12 @@ pub struct Workflow {
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum WorkflowKind {
-    QA,
     Release,
 }
 
 impl fmt::Display for WorkflowKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let n = match self {
-            WorkflowKind::QA => "qa",
             WorkflowKind::Release => "release",
         };
         f.write_str(n)
@@ -52,8 +47,6 @@ impl fmt::Display for WorkflowKind {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum HostOS {
     Windows,
-    Linux,
-    MacOS,
 }
 
 impl fmt::Display for HostOS {
@@ -61,18 +54,17 @@ impl fmt::Display for HostOS {
         use HostOS::*;
         f.write_str(match self {
             Windows => "windows",
-            Linux => "linux",
-            MacOS => "macos",
         })
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Job {
     name: String,
     toolchain: &'static str,
     features: Features,
     skia_debug: bool,
+    crt_static: bool,
     // we may need to disable clippy for beta builds temporarily.
     disable_clippy: bool,
     example_args: Option<String>,
@@ -128,7 +120,6 @@ fn build_header(workflow_name: &str, workflow_kind: WorkflowKind) -> String {
     let replacements: Vec<_> = [("workflowName".to_owned(), workflow_name.to_owned())].into();
 
     let workflow = match workflow_kind {
-        WorkflowKind::QA => QA_WORKFLOW,
         WorkflowKind::Release => RELEASE_WORKFLOW,
     };
 
@@ -138,38 +129,19 @@ fn build_header(workflow_name: &str, workflow_kind: WorkflowKind) -> String {
 fn build_job(workflow: &Workflow, template: &str, job: &Job, targets: &[TargetConf]) -> String {
     let skia_debug = if job.skia_debug { "1" } else { "0" };
 
+    let rust_flags = if job.crt_static {
+        "-C target-feature=+crt-static"
+    } else {
+        ""
+    };
+
     let mut replacements = vec![
         ("rustToolchain".into(), job.toolchain.into()),
         ("skiaDebug".into(), skia_debug.into()),
+        ("rustFlags".into(), rust_flags.into()),
     ];
 
-    if let Some(macosx_deployment_target) = macosx_deployment_target(workflow, job, targets) {
-        replacements.push((
-            "macosxDeploymentTarget".into(),
-            macosx_deployment_target.into(),
-        ))
-    }
-
     render_template(template, &replacements)
-}
-
-fn macosx_deployment_target(
-    workflow: &Workflow,
-    job: &Job,
-    targets: &[TargetConf],
-) -> Option<&'static str> {
-    if let HostOS::MacOS = workflow.host_os {
-        let metal = "metal".to_owned();
-        if targets
-            .iter()
-            .any(|target| effective_features(workflow, job, target).contains(&metal))
-        {
-            return Some("10.14");
-        } else {
-            return Some("10.13");
-        }
-    }
-    None
 }
 
 fn build_target(workflow: &Workflow, job: &Job, target: &TargetConf) -> String {
@@ -210,9 +182,6 @@ fn build_target(workflow: &Workflow, job: &Job, target: &TargetConf) -> String {
 fn effective_features(workflow: &Workflow, job: &Job, target: &TargetConf) -> Features {
     let mut features = job.features.clone();
     // if we are releasing binaries, we want the exact set of features specified.
-    if workflow.kind == WorkflowKind::QA {
-        features = features.join(&target.platform_features);
-    }
     features.sub(&target.disabled_features)
 }
 
