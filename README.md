@@ -2,10 +2,10 @@
 
 [![crates.io](https://img.shields.io/crates/v/skia-safe)](https://crates.io/crates/skia-safe) [![license](https://img.shields.io/crates/l/skia-safe)](LICENSE) [![Windows QA](https://github.com/rust-skia/rust-skia/actions/workflows/windows-qa.yaml/badge.svg?branch=master)](https://github.com/rust-skia/rust-skia/actions/workflows/windows-qa.yaml) [![Linux QA](https://github.com/rust-skia/rust-skia/actions/workflows/linux-qa.yaml/badge.svg?branch=master)](https://github.com/rust-skia/rust-skia/actions/workflows/linux-qa.yaml) [![macOS QA](https://github.com/rust-skia/rust-skia/actions/workflows/macos-qa.yaml/badge.svg?branch=master)](https://github.com/rust-skia/rust-skia/actions/workflows/macos-qa.yaml)
 
-Skia Submodule Status: chrome/m122 ([upstream changes][skia-upstream], [our changes][skia-ours]).
+Skia Submodule Status: chrome/m123 ([upstream changes][skia-upstream], [our changes][skia-ours]).
 
-[skia-upstream]: https://github.com/rust-skia/skia/compare/m122-0.70.1...google:chrome/m122
-[skia-ours]: https://github.com/google/skia/compare/chrome/m122...rust-skia:m122-0.70.1
+[skia-upstream]: https://github.com/rust-skia/skia/compare/m123-0.71.2...google:chrome/m123
+[skia-ours]: https://github.com/google/skia/compare/chrome/m123...rust-skia:m123-0.71.2
 
 ## About
 
@@ -39,16 +39,16 @@ For other platforms, more information is available at the [OpenSSL crate documen
 
 ### Platform Support, Build Targets, and Prebuilt Binaries
 
-Because building Skia takes a lot of time and needs tools that may be missing, the skia-bindings crate's `build.rs` tries to download prebuilt binaries from [the skia-binaries repository](https://github.com/rust-skia/skia-binaries/releases).
+Because building Skia takes a lot of time and needs tools that may be missing, the skia-bindings crate's `build.rs` attempts to download prebuilt binaries from [the skia-binaries repository](https://github.com/rust-skia/skia-binaries/releases) using the `curl` command line tool.
 
-| Platform                          | Binaries                                           |
-| --------------------------------- | -------------------------------------------------- |
-| Windows                           | `x86_64-pc-windows-msvc`                           |
-| Linux Ubuntu 16+<br />CentOS 7, 8 | `x86_64-unknown-linux-gnu`                         |
-| macOS                             | `x86_64-apple-darwin`                              |
-| Android                           | `aarch64-linux-android`<br/>`x86_64-linux-android` |
-| iOS                               | `aarch64-apple-ios`<br/>`x86_64-apple-ios`         |
-| WebAssembly                       | `wasm32-unknown-emscripten`                        |
+| Platform                          | Binaries                                                   |
+| --------------------------------- | ---------------------------------------------------------- |
+| Windows                           | `x86_64-pc-windows-msvc`                                   |
+| Linux Ubuntu 16+<br />CentOS 7, 8 | `x86_64-unknown-linux-gnu`<br/>`aarch64-unknown-linux-gnu` |
+| macOS                             | `x86_64-apple-darwin`<br/>`aarch64-apple-darwin`           |
+| Android                           | `aarch64-linux-android`<br/>`x86_64-linux-android`         |
+| iOS                               | `aarch64-apple-ios`<br/>`x86_64-apple-ios`                 |
+| WebAssembly                       | `wasm32-unknown-emscripten`                                |
 
 ### Wrappers & Codecs & Supported Features
 
