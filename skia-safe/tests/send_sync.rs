@@ -35,6 +35,7 @@ mod core {
     use skia_safe::*;
     use static_assertions::*;
 
+    assert_impl_all!(Arc: Send, Sync);
     // SkBitmap is not thread safe. Each thread must have its own copy of SkBitmap fields,
     // although threads may share the underlying pixel array.
     assert_not_impl_any!(Bitmap: Send, Sync);
@@ -272,7 +273,6 @@ mod textlayout {
 #[cfg(feature = "textlayout")]
 mod shaper {
     use skia_safe::shaper::*;
-    use skia_safe::Shaper;
     use static_assertions::*;
     assert_impl_all!(Shaper: Send, Sync);
     assert_not_impl_any!(FontRunIterator: Send, Sync);

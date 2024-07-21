@@ -1,7 +1,4 @@
-use skia_bindings::{
-    C_SkRefCntBase_ref, C_SkRefCntBase_unique, C_SkRefCntBase_unref, SkNVRefCnt, SkRefCnt,
-    SkRefCntBase,
-};
+#![allow(dead_code)]
 use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -11,8 +8,9 @@ use std::{
     slice,
 };
 
-// Re-export TryFrom / TryInto to make them available in all modules that use prelude::*.
-pub use std::convert::{TryFrom, TryInto};
+use skia_bindings::{
+    C_SkRefCntBase_ref, C_SkRefCntBase_unique, C_SkRefCntBase_unref, SkRefCnt, SkRefCntBase,
+};
 
 /// Convert any reference into any other.
 pub(crate) unsafe fn transmute_ref<FromT, ToT>(from: &FromT) -> &ToT {
@@ -89,10 +87,12 @@ impl IfBoolSome for bool {
     }
 }
 
+#[cfg(test)]
 pub(crate) trait RefCount {
     fn ref_cnt(&self) -> usize;
 }
 
+#[cfg(test)]
 impl RefCount for SkRefCntBase {
     // the problem here is that the binding generator represents std::atomic as an u8 (we
     // are lucky that the C alignment rules make space for an i32), so to get the ref
@@ -108,13 +108,15 @@ impl RefCount for SkRefCntBase {
 
 impl NativeBase<SkRefCntBase> for SkRefCnt {}
 
+#[cfg(test)]
 impl RefCount for SkRefCnt {
     fn ref_cnt(&self) -> usize {
         self.base().ref_cnt()
     }
 }
 
-impl RefCount for SkNVRefCnt {
+#[cfg(test)]
+impl RefCount for skia_bindings::SkNVRefCnt {
     #[allow(clippy::cast_ptr_alignment)]
     fn ref_cnt(&self) -> usize {
         unsafe {
@@ -675,6 +677,8 @@ pub trait IndexGet {}
 pub trait IndexSet {}
 
 pub trait IndexGetter<I, O: Copy> {
+    // TODO: Not sure why clippy 1.78-beta.1 complains about this one.
+    #[allow(unused)]
     fn get(&self, index: I) -> O;
 }
 
@@ -943,6 +947,12 @@ pub(crate) trait BorrowsFrom: Sized {
 impl<T: Sized> BorrowsFrom for T {
     fn borrows<D: ?Sized>(self, _dep: &D) -> Borrows<Self> {
         Borrows(self, PhantomData)
+    }
+}
+
+impl<'a, H> Borrows<'a, H> {
+    pub(crate) unsafe fn unchecked_new(h: H) -> Self {
+        Self(h, PhantomData)
     }
 }
 

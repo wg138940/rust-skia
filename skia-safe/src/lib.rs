@@ -3,7 +3,6 @@
 #![allow(clippy::non_send_fields_in_send_ty)]
 // https://github.com/rust-lang/rust/issues/93367
 #![allow(unknown_lints)]
-#![allow(suspicious_auto_trait_impls)]
 
 mod macros;
 
@@ -22,10 +21,9 @@ mod interop;
 mod modules;
 mod pathops;
 mod prelude;
-pub mod wrapper;
-// The module private may contain types that leak.
-pub mod private;
+pub(crate) mod private;
 pub mod svg;
+pub mod wrapper;
 // TODO: We don't export utils/* into the crate's root yet. Should we?
 pub mod utils;
 

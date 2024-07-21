@@ -1,7 +1,11 @@
-use super::Handle;
-use crate::prelude::{self, NativeDrop};
-use skia_bindings::{self as sb, GrMtlBackendContext};
 use std::fmt;
+
+use crate::{
+    gpu::mtl::Handle,
+    prelude::{self, NativeDrop},
+};
+
+use skia_bindings::{self as sb, GrMtlBackendContext};
 
 pub type BackendContext = prelude::Handle<GrMtlBackendContext>;
 unsafe_send_sync!(BackendContext);
@@ -25,9 +29,7 @@ impl BackendContext {
     ///
     /// This function retains all the non-`null` handles passed to it and releases them as soon the
     /// [BackendContext] is dropped.
-    pub unsafe fn new(device: Handle, queue: Handle, binary_archive: Handle) -> Self {
-        BackendContext::construct(|bc| {
-            sb::C_GrMtlBackendContext_Construct(bc, device, queue, binary_archive)
-        })
+    pub unsafe fn new(device: Handle, queue: Handle) -> Self {
+        BackendContext::construct(|bc| sb::C_GrMtlBackendContext_Construct(bc, device, queue))
     }
 }

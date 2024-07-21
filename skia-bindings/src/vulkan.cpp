@@ -2,7 +2,7 @@
     #define SK_VULKAN
 #endif
 
-#include "include/gpu/GrBackendDrawableInfo.h"
+#include "include/gpu/ganesh/vk/GrBackendDrawableInfo.h"
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/GrDirectContext.h"
 #include "include/gpu/MutableTextureState.h"
@@ -40,7 +40,7 @@ extern "C" bool C_GrBackendDrawableInfo_getVkDrawableInfo(const GrBackendDrawabl
     return self->getVkDrawableInfo(info);
 }
 
-extern "C" void C_GPU_VK_Types(GrVkExtensionFlags *, GrVkFeatureFlags *, VkBuffer *) {}
+extern "C" void C_GPU_VK_Types(VkBuffer *) {}
 
 typedef PFN_vkVoidFunction (*GetProcFn)(const char* name, VkInstance instance, VkDevice device);
 typedef const void* (*GetProcFnVoidPtr)(const char* name, VkInstance instance, VkDevice device);

@@ -1,9 +1,11 @@
+use std::{fmt, ptr};
+
+use skia_bindings::{self as sb, GrMtlSurfaceInfo, GrMtlTextureInfo};
+
 use crate::{
     gpu,
     prelude::{self, NativeAccess, NativeDrop, NativePartialEq},
 };
-use skia_bindings::{self as sb, GrMtlSurfaceInfo, GrMtlTextureInfo};
-use std::{fmt, ptr};
 
 pub use skia_bindings::GrMTLHandle as Handle;
 pub use skia_bindings::GrMTLPixelFormat as PixelFormat;

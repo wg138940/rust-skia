@@ -1,10 +1,22 @@
-use crate::{prelude::*, scalar, Font, FontMgr, FourByteTag, Point, TextBlob};
+use std::{
+    ffi::{CStr, CString},
+    fmt,
+    marker::PhantomData,
+    os::raw,
+};
+
 use skia_bindings::{
     self as sb, RustRunHandler, SkShaper, SkShaper_BiDiRunIterator, SkShaper_FontRunIterator,
     SkShaper_LanguageRunIterator, SkShaper_RunHandler, SkShaper_RunIterator,
     SkShaper_ScriptRunIterator, SkTextBlobBuilderRunHandler,
 };
-use std::{ffi::CStr, fmt, marker::PhantomData, os::raw};
+
+use crate::{prelude::*, scalar, Font, FontMgr, FourByteTag, Point, TextBlob};
+
+// The following three are re-exported in `modules.rs` via `mod shapers {}`.
+pub(crate) mod core_text;
+pub(crate) mod harfbuzz;
+pub(crate) mod unicode;
 
 pub use run_handler::RunHandler;
 
@@ -30,35 +42,29 @@ impl fmt::Debug for Shaper {
 }
 
 impl Shaper {
+    #[deprecated(since = "0.74.0", note = "use shapers::primitive::primitive_text()")]
     pub fn new_primitive() -> Self {
-        Self::from_ptr(unsafe { sb::C_SkShaper_MakePrimitive() }).unwrap()
+        crate::shapers::primitive::primitive_text()
     }
 
-    pub fn new_shaper_driven_wrapper(font_mgr: impl Into<Option<FontMgr>>) -> Option<Self> {
-        #[cfg(feature = "embed-icudtl")]
-        crate::icu::init();
-
-        Self::from_ptr(unsafe {
-            sb::C_SkShaper_MakeShaperDrivenWrapper(font_mgr.into().into_ptr_or_null())
-        })
+    pub fn new_shaper_driven_wrapper(
+        fallback_font_mgr: impl Into<Option<FontMgr>>,
+    ) -> Option<Self> {
+        crate::shapers::hb::shaper_driven_wrapper(fallback_font_mgr)
     }
 
-    pub fn new_shape_then_wrap(font_mgr: impl Into<Option<FontMgr>>) -> Option<Self> {
-        #[cfg(feature = "embed-icudtl")]
-        crate::icu::init();
-
-        Self::from_ptr(unsafe {
-            sb::C_SkShaper_MakeShapeThenWrap(font_mgr.into().into_ptr_or_null())
-        })
+    pub fn new_shape_then_wrap(fallback_font_mgr: impl Into<Option<FontMgr>>) -> Option<Self> {
+        crate::shapers::hb::shape_then_wrap(fallback_font_mgr)
     }
 
-    pub fn new_shape_dont_wrap_or_reorder(font_mgr: impl Into<Option<FontMgr>>) -> Option<Self> {
-        #[cfg(feature = "embed-icudtl")]
-        crate::icu::init();
-
-        Self::from_ptr(unsafe {
-            sb::C_SkShaper_MakeShapeDontWrapOrReorder(font_mgr.into().into_ptr_or_null())
-        })
+    #[deprecated(
+        since = "0.74.0",
+        note = "use shapers::hb::shape_dont_wrap_or_reorder()"
+    )]
+    pub fn new_shape_dont_wrap_or_reorder(
+        fallback_font_mgr: impl Into<Option<FontMgr>>,
+    ) -> Option<Self> {
+        crate::shapers::hb::shape_dont_wrap_or_reorder(fallback_font_mgr)
     }
 
     pub fn purge_harf_buzz_cache() {
@@ -207,11 +213,12 @@ impl Shaper {
         .map(|i| i.borrows(utf8))
     }
 
+    #[deprecated(
+        since = "0.74.0",
+        note = "use shapers::primitive::trivial_bidi_run_iterator()"
+    )]
     pub fn new_trivial_bidi_run_iterator(bidi_level: u8, utf8_bytes: usize) -> BiDiRunIterator {
-        BiDiRunIterator::from_ptr(unsafe {
-            sb::C_SkShaper_TrivialBidiRunIterator_new(bidi_level, utf8_bytes)
-        })
-        .unwrap()
+        shapers::primitive::trivial_bidi_run_iterator(bidi_level, utf8_bytes)
     }
 }
 
@@ -266,11 +273,12 @@ impl Shaper {
         .borrows(utf8)
     }
 
+    #[deprecated(
+        since = "0.74.0",
+        note = "use shapers::primitive::trivial_script_run_iterator"
+    )]
     pub fn new_trivial_script_run_iterator(bidi_level: u8, utf8_bytes: usize) -> ScriptRunIterator {
-        ScriptRunIterator::from_ptr(unsafe {
-            sb::C_SkShaper_TrivialScriptRunIterator_new(bidi_level, utf8_bytes)
-        })
-        .unwrap()
+        shapers::primitive::trivial_script_run_iterator(bidi_level, utf8_bytes)
     }
 }
 
@@ -312,13 +320,13 @@ impl Shaper {
         })
     }
 
-    pub fn new_trivial_language_run_iterator(language: impl AsRef<str>) -> LanguageRunIterator {
-        let bytes = language.as_ref().as_bytes();
+    pub fn new_trivial_language_run_iterator(
+        language: impl AsRef<str>,
+        utf8_bytes: usize,
+    ) -> LanguageRunIterator {
+        let language = CString::new(language.as_ref()).unwrap();
         LanguageRunIterator::from_ptr(unsafe {
-            sb::C_SkShaper_TrivialLanguageRunIterator_new(
-                bytes.as_ptr() as *const raw::c_char,
-                bytes.len(),
-            )
+            sb::C_SkShaper_TrivialLanguageRunIterator_new(language.as_ptr(), utf8_bytes)
         })
         .unwrap()
     }
@@ -564,15 +572,18 @@ impl Shaper {
 }
 
 mod rust_run_handler {
-    use crate::prelude::*;
-    use crate::shaper::run_handler::RunInfo;
-    use crate::shaper::{AsNativeRunHandler, RunHandler};
+    use std::mem;
+
     use skia_bindings as sb;
     use skia_bindings::{
         RustRunHandler, RustRunHandler_Param, SkShaper_RunHandler, SkShaper_RunHandler_Buffer,
         SkShaper_RunHandler_RunInfo, TraitObject,
     };
-    use std::mem;
+
+    use crate::{
+        prelude::*,
+        shaper::{run_handler::RunInfo, AsNativeRunHandler, RunHandler},
+    };
 
     impl NativeBase<SkShaper_RunHandler> for RustRunHandler {}
 
@@ -584,7 +595,7 @@ mod rust_run_handler {
 
     pub unsafe fn new_param(run_handler: &mut dyn RunHandler) -> RustRunHandler_Param {
         RustRunHandler_Param {
-            trait_: mem::transmute(run_handler),
+            trait_: mem::transmute::<&mut dyn RunHandler, TraitObject>(run_handler),
             beginLine: Some(begin_line),
             runInfo: Some(run_info),
             commitRunInfo: Some(commit_run_info),
@@ -724,6 +735,55 @@ impl Shaper {
             )
         };
         builder.make_blob().map(|tb| (tb, builder.end_point()))
+    }
+}
+
+pub(crate) mod shapers {
+    use super::{BiDiRunIterator, ScriptRunIterator, Shaper};
+
+    #[deprecated(since = "0.74.0", note = "use shapers::primitive::primitive_text()")]
+    pub fn primitive() -> Shaper {
+        primitive::primitive_text()
+    }
+
+    #[deprecated(
+        since = "0.74.0",
+        note = "use shapers::primitive::trivial_bidi_run_iterator()"
+    )]
+    pub fn trivial_bidi_run_iterator(bidi_level: u8, utf8_bytes: usize) -> BiDiRunIterator {
+        primitive::trivial_bidi_run_iterator(bidi_level, utf8_bytes)
+    }
+
+    #[deprecated(
+        since = "0.74.0",
+        note = "use shapers::primitive::trivial_script_run_iterator()"
+    )]
+    pub fn trivial_script_run_iterator(bidi_level: u8, utf8_bytes: usize) -> ScriptRunIterator {
+        primitive::trivial_script_run_iterator(bidi_level, utf8_bytes)
+    }
+
+    pub mod primitive {
+        use skia_bindings as sb;
+
+        use crate::shaper::{BiDiRunIterator, ScriptRunIterator, Shaper};
+
+        pub fn primitive_text() -> Shaper {
+            Shaper::from_ptr(unsafe { sb::C_SkShapers_Primitive_PrimitiveText() }).unwrap()
+        }
+
+        pub fn trivial_bidi_run_iterator(bidi_level: u8, utf8_bytes: usize) -> BiDiRunIterator {
+            BiDiRunIterator::from_ptr(unsafe {
+                sb::C_SkShapers_Primitive_TrivialBidiRunIterator_new(bidi_level, utf8_bytes)
+            })
+            .unwrap()
+        }
+
+        pub fn trivial_script_run_iterator(bidi_level: u8, utf8_bytes: usize) -> ScriptRunIterator {
+            ScriptRunIterator::from_ptr(unsafe {
+                sb::C_SkShapers_Primitive_TrivialScriptRunIterator_new(bidi_level, utf8_bytes)
+            })
+            .unwrap()
+        }
     }
 }
 

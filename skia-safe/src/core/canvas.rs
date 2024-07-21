@@ -1,12 +1,9 @@
-use std::{
-    cell::UnsafeCell, convert::TryInto, ffi::CString, fmt, marker::PhantomData, mem, ops::Deref,
-    ptr, slice,
-};
+use std::{cell::UnsafeCell, ffi::CString, fmt, marker::PhantomData, mem, ops::Deref, ptr, slice};
 
 use sb::SkCanvas_FilterSpan;
 use skia_bindings::{
-    self as sb, SkAutoCanvasRestore, SkCanvas, SkCanvas_SaveLayerRec, SkImageFilter, SkPaint,
-    SkRect, U8CPU,
+    self as sb, SkAutoCanvasRestore, SkCanvas, SkCanvas_SaveLayerRec, SkColorSpace, SkImageFilter,
+    SkPaint, SkRect, U8CPU,
 };
 
 #[cfg(feature = "gpu")]
@@ -17,6 +14,7 @@ use crate::{
     Picture, Pixmap, Point, QuickReject, RRect, RSXform, Rect, Region, SamplingOptions, Shader,
     Surface, SurfaceProps, TextBlob, TextEncoding, Vector, Vertices, M44,
 };
+use crate::{Arc, ColorSpace};
 
 pub use lattice::Lattice;
 
@@ -43,6 +41,7 @@ pub struct SaveLayerRec<'a> {
     paint: Option<&'a SkPaint>,
     filters: SkCanvas_FilterSpan,
     backdrop: Option<&'a SkImageFilter>,
+    color_space: Option<&'a SkColorSpace>,
     flags: SaveLayerFlags,
     experimental_backdrop_scale: scalar,
 }
@@ -78,6 +77,10 @@ impl fmt::Debug for SaveLayerRec<'_> {
                 "backdrop",
                 &ImageFilter::from_unshared_ptr_ref(&(self.backdrop.as_ptr_or_null() as *mut _)),
             )
+            .field(
+                "color_space",
+                &ColorSpace::from_unshared_ptr_ref(&(self.color_space.as_ptr_or_null() as *mut _)),
+            )
             .field("flags", &self.flags)
             .field(
                 "experimental_backdrop_scale",
@@ -109,6 +112,14 @@ impl<'a> SaveLayerRec<'a> {
     #[must_use]
     pub fn backdrop(mut self, backdrop: &'a ImageFilter) -> Self {
         self.backdrop = Some(backdrop.native());
+        self
+    }
+
+    /// If not `None`, this triggers a color space conversion when the layer is restored. It
+    /// will be as if the layer's contents are drawn in this color space. Filters from
+    /// `backdrop` and `paint` will be applied in this color space.
+    pub fn color_space(mut self, color_space: &'a ColorSpace) -> Self {
+        self.color_space = Some(color_space.native());
         self
     }
 
@@ -281,6 +292,7 @@ impl Canvas {
     /// - `row_bytes` interval from one [`Surface`] row to the next, or zero
     /// - `props` LCD striping orientation and setting for device independent fonts;
     ///   may be `None`
+    ///
     /// Returns [`OwnedCanvas`] if all parameters are valid; otherwise, `None`.
     pub fn from_raster_direct<'pixels>(
         info: &ImageInfo,
@@ -325,6 +337,7 @@ impl Canvas {
     /// - `pixels` pointer to destination pixels buffer; buffer size should be height times
     ///   `row_bytes`
     /// - `row_bytes` interval from one [`Surface`] row to the next, or zero
+    ///
     /// Returns [`OwnedCanvas`] if all parameters are valid; otherwise, `None`
     pub fn from_raster_direct_n32<'pixels>(
         size: impl Into<ISize>,
@@ -349,6 +362,7 @@ impl Canvas {
     /// - `size` with and height zero or greater
     /// - `props` LCD striping orientation and setting for device independent fonts;
     ///   may be `None`
+    ///
     /// Returns [`Canvas`] placeholder with dimensions
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_int_int_const_SkSurfaceProps_star>
@@ -380,6 +394,7 @@ impl Canvas {
     /// - `bitmap` width, height, [`crate::ColorType`], [`crate::AlphaType`], and pixel storage of
     ///   raster surface
     /// - `props` order and orientation of RGB striping; and whether to use device independent fonts
+    ///
     /// Returns [`Canvas`] that can be used to draw into bitmap
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_const_SkBitmap_const_SkSurfaceProps>
@@ -416,6 +431,7 @@ impl Canvas {
     /// returns `true`. Otherwise, returns `false` and leave props unchanged.
     ///
     /// - `props` storage for writable [`SurfaceProps`]
+    ///
     /// Returns `true` if [`SurfaceProps`] was copied
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_getProps>
@@ -460,6 +476,7 @@ impl Canvas {
     /// - `info` width, height, [`crate::ColorType`], [`crate::AlphaType`], and
     ///   [`crate::ColorSpace`]
     /// - `props` [`SurfaceProps`] to match; may be `None` to match [`Canvas`]
+    ///
     /// Returns [`Surface`] matching info and props, or `None` if no match is available
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_makeSurface>
@@ -510,6 +527,7 @@ impl Canvas {
     /// - `info` storage for writable pixels' [`ImageInfo`]
     /// - `row_bytes` storage for writable pixels' row bytes
     /// - `origin` storage for [`Canvas`] top layer origin, its top-left corner
+    ///
     /// Returns address of pixels, or `None` if inaccessible
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_accessTopLayerPixels_a>
@@ -593,6 +611,7 @@ impl Canvas {
     /// - `dst_row_bytes` size of one destination row; `dst_info.width()` times pixel size, or
     ///   larger
     /// - `src_point` offset into readable pixels; may be negative
+    ///
     /// Returns `true` if pixels were copied
     #[must_use]
     pub fn read_pixels(
@@ -648,6 +667,7 @@ impl Canvas {
     ///
     /// - `pixmap` storage for pixels copied from [`Canvas`]
     /// - `src` offset into readable pixels ; may be negative
+    ///
     /// Returns `true` if pixels were copied
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_readPixels_2>
@@ -689,6 +709,7 @@ impl Canvas {
     ///
     /// - `bitmap` storage for pixels copied from [`Canvas`]
     /// - `src` offset into readable pixels; may be negative
+    ///
     /// Returns `true` if pixels were copied
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_readPixels_3>
@@ -732,6 +753,7 @@ impl Canvas {
     /// - `pixels` pixels to copy, of size `info.height()` times `row_bytes`, or larger
     /// - `row_bytes` size of one row of pixels; info.width() times pixel size, or larger
     /// - `offset` offset into [`Canvas`] writable pixels; may be negative
+    ///
     /// Returns `true` if pixels were written to [`Canvas`]
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_writePixels>
@@ -782,12 +804,13 @@ impl Canvas {
     /// - Source and destination rectangles do not intersect.
     /// - bitmap does not have allocated pixels.
     /// - bitmap pixels could not be converted to [`Canvas`] `image_info().color_type()` or
-    /// `image_info().alpha_type()`.
+    ///   `image_info().alpha_type()`.
     /// - [`Canvas`] pixels are not writable; for instance, [`Canvas`] is document based.
     /// - bitmap pixels are inaccessible; for instance, bitmap wraps a texture.
     ///
     /// - `bitmap` contains pixels copied to [`Canvas`]
     /// - `offset` offset into [`Canvas`] writable pixels; may be negative
+    ///
     /// Returns `true` if pixels were written to [`Canvas`]
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_writePixels_2>
@@ -844,6 +867,7 @@ impl Canvas {
     ///
     /// - `bounds` hint to limit the size of layer; may be `None`
     /// - `alpha` opacity of layer
+    ///
     /// Returns depth of saved stack
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_saveLayerAlpha>
@@ -876,6 +900,7 @@ impl Canvas {
     /// Call [`Self::restore_to_count()`] with result to restore this and subsequent saves.
     ///
     /// - `layer_rec` layer state
+    ///
     /// Returns depth of save state stack before this call was made.
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_saveLayer_3>
@@ -1472,6 +1497,34 @@ impl Canvas {
         self
     }
 
+    /// Draws arc using clip, [`Matrix`], and [`Paint`] paint.
+    ///
+    /// Arc is part of oval bounded by oval, sweeping from `start_angle` to `start_angle` plus
+    /// `sweep_angle`. `start_angle` and `sweep_angle` are in degrees.
+    ///
+    /// `start_angle` of zero places start point at the right middle edge of oval.
+    /// A positive `sweep_angle` places arc end point clockwise from start point;
+    /// a negative `sweep_angle` places arc end point counterclockwise from start point.
+    /// `sweep_angle` may exceed 360 degrees, a full circle.
+    /// If `use_center` is `true`, draw a wedge that includes lines from oval
+    /// center to arc end points. If `use_center` is `false`, draw arc between end points.
+    ///
+    /// If [`Rect`] oval is empty or `sweep_angle` is zero, nothing is drawn.
+    ///
+    /// - `arc` [`Arc`] SkArc specifying oval, startAngle, sweepAngle, and arc-vs-wedge
+    /// - `paint` [`Paint`] stroke or fill, blend, color, and so on, used to draw
+
+    pub fn draw_arc_2(&self, arc: &Arc, paint: &Paint) -> &Self {
+        self.draw_arc(
+            arc.oval,
+            arc.start_angle,
+            arc.sweep_angle,
+            arc.is_wedge(),
+            paint,
+        );
+        self
+    }
+
     /// Draws [`RRect`] bounded by [`Rect`] rect, with corner radii `(rx, ry)` using clip,
     /// [`Matrix`], and [`Paint`] `paint`.
     ///
@@ -1665,7 +1718,7 @@ impl Canvas {
     /// - `dst` destination [`Rect`] of image to draw to
     /// - `filter` what technique to use when sampling the image
     /// - `paint` [`Paint`] containing [`BlendMode`], [`crate::ColorFilter`], [`ImageFilter`],
-    /// and so on; or `None`
+    ///   and so on; or `None`
     pub fn draw_image_lattice(
         &self,
         image: impl AsRef<Image>,
@@ -1926,6 +1979,7 @@ impl Canvas {
     /// [`BlendMode`] is ignored if [`Vertices`] does not have colors. Otherwise, it combines
     ///   - the [`Shader`] if [`Paint`] contains [`Shader`
     ///   - or the opaque [`Paint`] color if [`Paint`] does not contain [`Shader`]
+    ///
     /// as the src of the blend and the interpolated vertex colors as the dst.
     ///
     /// [`crate::MaskFilter`], [`crate::PathEffect`], and antialiasing on [`Paint`] are ignored.
@@ -1963,6 +2017,7 @@ impl Canvas {
     /// [`BlendMode`] is ignored if colors is `None`. Otherwise, it combines
     ///   - the [`Shader`] if [`Paint`] contains [`Shader`]
     ///   - or the opaque [`Paint`] color if [`Paint`] does not contain [`Shader`]
+    ///
     /// as the src of the blend and the interpolated patch colors as the dst.
     ///
     /// [`crate::MaskFilter`], [`crate::PathEffect`], and antialiasing on [`Paint`] are ignored.
@@ -2197,6 +2252,7 @@ impl QuickReject<Rect> for Canvas {
     /// Use to check if an area to be drawn is clipped out, to skip subsequent draw calls.
     ///
     /// - `rect` [`Rect`] to compare with clip
+    ///
     /// Returns `true` if `rect`, transformed by [`Matrix`], does not intersect clip
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_quickReject>
@@ -2212,6 +2268,7 @@ impl QuickReject<Path> for Canvas {
     /// Use to check if an area to be drawn is clipped out, to skip subsequent draw calls.
     ///
     /// - `path` [`Path`] to compare with clip
+    ///
     /// Returns `true` if `path`, transformed by [`Matrix`], does not intersect clip
     ///
     /// example: <https://fiddle.skia.org/c/@Canvas_quickReject_2>
@@ -2355,6 +2412,7 @@ impl AutoCanvasRestore {
     ///
     /// - `canvas` [`Canvas`] to guard
     /// - `do_save` call [`Canvas::save()`]
+    ///
     /// Returns utility to restore [`Canvas`] state on destructor
     pub fn guard(canvas: &Canvas, do_save: bool) -> AutoRestoredCanvas {
         let restore = construct(|acr| unsafe {

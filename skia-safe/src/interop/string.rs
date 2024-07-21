@@ -1,6 +1,9 @@
-use crate::prelude::*;
-use skia_bindings::{self as sb, SkString};
+#![allow(dead_code)]
 use std::{fmt, str};
+
+use skia_bindings::{self as sb, SkString};
+
+use crate::prelude::*;
 
 pub type String = Handle<SkString>;
 unsafe_send_sync!(String);
@@ -19,9 +22,9 @@ impl AsRef<str> for String {
     }
 }
 
-impl ToString for String {
-    fn to_string(&self) -> std::string::String {
-        self.as_str().into()
+impl fmt::Display for String {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_str().fmt(f)
     }
 }
 

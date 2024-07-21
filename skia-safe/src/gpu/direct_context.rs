@@ -82,8 +82,9 @@ impl fmt::Debug for DirectContext {
 }
 
 impl DirectContext {
-    // Deprecated in Skia
+    // Removed from Skia
     #[cfg(feature = "gl")]
+    #[deprecated(since = "0.74.0", note = "use gpu::direct_contexts::make_gl()")]
     pub fn new_gl<'a>(
         interface: impl Into<gl::Interface>,
         options: impl Into<Option<&'a ContextOptions>>,
@@ -91,8 +92,9 @@ impl DirectContext {
         crate::gpu::direct_contexts::make_gl(interface, options)
     }
 
-    // Deprecated in Skia
+    // Removed from Skia
     #[cfg(feature = "vulkan")]
+    #[deprecated(since = "0.74.0", note = "use gpu::direct_contexts::make_vulkan()")]
     pub fn new_vulkan<'a>(
         backend_context: &vk::BackendContext,
         options: impl Into<Option<&'a ContextOptions>>,
@@ -101,13 +103,12 @@ impl DirectContext {
     }
 
     #[cfg(feature = "metal")]
+    #[deprecated(since = "0.74.0", note = "use gpu::direct_contexts::make_metal()")]
     pub fn new_metal<'a>(
-        backend: &crate::gpu::mtl::BackendContext,
+        backend_context: &crate::gpu::mtl::BackendContext,
         options: impl Into<Option<&'a ContextOptions>>,
     ) -> Option<DirectContext> {
-        DirectContext::from_ptr(unsafe {
-            sb::C_GrContext_MakeMetal(backend.native(), options.into().native_ptr_or_null())
-        })
+        crate::gpu::direct_contexts::make_metal(backend_context, options)
     }
 
     #[cfg(feature = "d3d")]
